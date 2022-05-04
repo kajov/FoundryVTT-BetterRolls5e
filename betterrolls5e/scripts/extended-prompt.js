@@ -3,7 +3,7 @@
  * @type {Dialog}
  */
 export default class ExtendedPrompt extends Dialog {
-	constructor(item, dialogData={}, options={}) {
+	constructor(item, dialogData = {}, options = {}) {
 		super(dialogData, options);
 		this.options.classes = ["dnd5e", "dialog"];
 

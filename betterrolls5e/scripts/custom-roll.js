@@ -61,7 +61,7 @@ export class CustomRoll {
 	 * @param {string} skill shorthand referring to the skill name
 	 * @param {FullRollActorParams} params parameters
 	 */
-	static async rollSkill(actor, skill, params={}) {
+	static async rollSkill(actor, skill, params = {}) {
 		if (!(skill in dnd5e.skills)) {
 			throw new Error(`Better Rolls | Skill ${skill} does not exist. Valid values can be found in CONFIG.DND5E.skills`);
 		}
@@ -97,7 +97,7 @@ export class CustomRoll {
 	 * @param {String} rollType		String of either "check" or "save"
 	 * @param {FullRollActorParams} params
 	 */
-	static async rollAttribute(actor, ability, rollType, params={}) {
+	static async rollAttribute(actor, ability, rollType, params = {}) {
 		const label = dnd5e.abilities[ability];
 
 		let titleString;
@@ -266,8 +266,9 @@ export class CustomItemRoll {
 		}
 
 		const actor = await this.getActor();
-		const Item5e = game.dnd5e.entities.Item5e;
-		const item = storedData && actor ? Item5e.createOwned(storedData, actor) : actor?.items.get(this.itemId);
+		const item = storedData && actor
+			? await actor.createEmbeddedDocuments("Item", [storedData])[0]
+			: actor?.items.get(this.itemId);
 		if (item) {
 			console.info(`BetterRolls | Card loaded existing item data ${item.name}`);
 		}
@@ -327,12 +328,12 @@ export class CustomItemRoll {
 	 * Generator to create an iterable flattened list
 	 * @private
 	 */
-	*iterEntries(list=null) {
+	*iterEntries(list = null) {
 		list = list ?? this.entries;
 		for (const entry of list) {
 			yield entry;
 			if (entry.entries) {
-				yield *this.iterEntries(entry.entries);
+				yield* this.iterEntries(entry.entries);
 			}
 		}
 	}
@@ -423,7 +424,7 @@ export class CustomItemRoll {
 						const { formula, total } = entry.baseRoll;
 						const extraCritDice = entry.extraCritDice ?? baseExtraCritDice;
 						entry.extraCritDice = extraCritDice;
-						entry.critRoll = ItemUtils.getCritRoll(formula, total, { settings, extraCritDice });
+						entry.critRoll = await ItemUtils.getCritRoll(formula, total, { settings, extraCritDice });
 						entry._critBackup = entry.critRoll; // prevent undoing the crit
 						this.dicePool.push(entry.critRoll);
 					}
@@ -569,7 +570,7 @@ export class CustomItemRoll {
 
 		// Add more rolls if necessary
 		while (multiroll.entries?.length < numRolls) {
-			const roll = multiroll.entries[0].roll.reroll({ async: false });
+			const roll = await multiroll.entries[0].roll.reroll({ async: true });
 			multiroll.entries.push(Utils.processRoll(roll, multiroll.critThreshold, [20], multiroll.bonus));
 			this.dicePool.push(roll);
 		}
@@ -609,7 +610,7 @@ export class CustomItemRoll {
 
 		Hooks.call("preRollItemBetterRolls", this);
 
-		const item  = await this.getItem();
+		const item = await this.getItem();
 		const actor = await this.getActor();
 
 		// Pre-update item configurations which updates the params
@@ -687,7 +688,7 @@ export class CustomItemRoll {
 			const consume = item.data.data.consume;
 			if (request.resource && consume?.type === "ammo") {
 				ammo = actor.items.get(consume.target);
-				const usage = item._getUsageUpdates({consumeResource: true});
+				const usage = item._getUsageUpdates({ consumeResource: true });
 				if (usage === false) {
 					this.error = true;
 					return;
@@ -702,6 +703,8 @@ export class CustomItemRoll {
 		}
 
 		// Consume ammo (now that fields have been processed)
+		// ammoUpdate may be an array containing the actual object we're interested in at entry 0
+		if (ammo && Array.isArray(ammoUpdate)) { ammoUpdate = ammoUpdate[0]; }
 		if (ammo && !isObjectEmpty(ammoUpdate)) {
 			await ammo.update(ammoUpdate);
 		}
@@ -819,7 +822,7 @@ export class CustomItemRoll {
 	 * @param {string} param0.rollMode roll mode to determine if private/public/etc
 	 * @returns {Promise<ChatMessage>} the created chat message
 	 */
-	async toMessage({ rollMode=null, createMessage=true }={}) {
+	async toMessage({ rollMode = null, createMessage = true } = {}) {
 		if (!this.rolled) {
 			await this.roll();
 		}
@@ -840,7 +843,7 @@ export class CustomItemRoll {
 			...Utils.getWhisperData(rollMode),
 
 			// If not blank, D&D will try to modify the card...
-			roll: new Roll("0").roll({ async: false })
+			roll: await new Roll("0").roll({ async: true })
 		};
 
 		await Hooks.callAll("messageBetterRolls", this, chatData);
@@ -880,7 +883,7 @@ export class CustomItemRoll {
 	 * This repeat does not consume uses, and overrides advantage/disadvantage / prompts
 	 * @returns {Promise<CustomItemRoll>}
 	 */
-	async repeat(options={}) {
+	async repeat(options = {}) {
 		if (!this.canRepeat()) return;
 
 		// Show error messages if the item/actor was deleted
@@ -908,7 +911,7 @@ export class CustomItemRoll {
 	 * Nothing updates until this method is called.
 	 * Requires the chat message to already exist.
 	 */
-	async update(additional={}) {
+	async update(additional = {}) {
 		const chatMessage = game.messages.get(this.messageId);
 		if (chatMessage) {
 			const item = await this.getItem();
@@ -925,6 +928,7 @@ export class CustomItemRoll {
 	}
 
 	/**
+			formula = item.data.data.critical?.damage;
 	 * Equivalent to addField()
 	 * @param {*} field
 	 * @deprecated
@@ -1155,7 +1159,7 @@ export class CustomItemRoll {
 				spellLevel = spellFormData.level;
 				consume = Boolean(spellFormData.consumeSlot);
 				placeTemplate = Boolean(spellFormData.placeTemplate);
-			} catch(error) {
+			} catch (error) {
 				console.error(error);
 				return "error";
 			} finally {
@@ -1205,9 +1209,9 @@ export class CustomItemRoll {
 		// Merges update data from _getUsageUpdates() into the result dictionaries
 		// Note: mergeObject() also resolves "." nesting which is not what we want
 		function mergeUpdates(updates) {
-			actorUpdates = { ...actorUpdates, ...(updates.actorUpdates ?? {})};
-			itemUpdates = { ...itemUpdates, ...(updates.itemUpdates ?? {})};
-			resourceUpdates = { ...resourceUpdates, ...(updates.resourceUpdates ?? {})};
+			actorUpdates = { ...actorUpdates, ...(updates.actorUpdates ?? {}) };
+			itemUpdates = { ...itemUpdates, ...(updates.itemUpdates ?? {}) };
+			resourceUpdates = { ...resourceUpdates, ...(updates.resourceUpdates ?? {}) };
 		}
 
 		const itemData = item.data.data;
@@ -1230,12 +1234,12 @@ export class CustomItemRoll {
 
 		// Check for consuming quantity, but not uses
 		if (request.quantity && !consumeUsage) {
-			if (!quantity) { ui.notifications.warn(game.i18n.format("DND5E.ItemNoUses", {name: item.name})); return "error"; }
+			if (!quantity) { ui.notifications.warn(game.i18n.format("DND5E.ItemNoUses", { name: item.name })); return "error"; }
 		}
 
 		// Check for consuming charge ("Action Recharge")
 		if (consumeCharge && !recharge.charged) {
-			ui.notifications.warn(game.i18n.format("DND5E.ItemNoUses", {name: item.name}));
+			ui.notifications.warn(game.i18n.format("DND5E.ItemNoUses", { name: item.name }));
 			return "error";
 		}
 

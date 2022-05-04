@@ -22,7 +22,7 @@ export class RollFields {
 	 * @param {number?} options.slotLevel
 	 * @returns {import("./renderer.js").HeaderDataProps}
 	 */
-	static constructHeaderData(options={}) {
+	static constructHeaderData(options = {}) {
 		const { item, slotLevel } = options;
 		const actor = options?.actor ?? item?.actor;
 		const img = options.img ?? item?.img ?? ActorUtils.getImage(actor);
@@ -48,7 +48,7 @@ export class RollFields {
 	 * @param {BRSettings} options.settings additional settings to override
 	 * @returns {import("./renderer.js").MultiRollDataProps}
 	 */
-	static constructMultiRoll(options={}) {
+	static async constructMultiRoll(options = {}) {
 		const { critThreshold, title, rollType, elvenAccuracy } = options;
 		if (!options.formula) {
 			console.error("No formula given for multi-roll");
@@ -81,12 +81,12 @@ export class RollFields {
 			const fullRoll = new Roll(formula);
 			const baseRoll = new Roll(fullRoll.terms[0].formula ?? fullRoll.terms[0]);
 			const bonusRollFormula = [...fullRoll.terms.slice(1).map(t => t.formula ?? t)].join(' ') || "0";
-			const bonusRoll = new Roll(bonusRollFormula).roll({async: false});
+			const bonusRoll = await new Roll(bonusRollFormula).roll({ async: true });
 
 			// Populate the roll entries
 			const entries = [];
 			for (let i = 0; i < numRolls; i++) {
-				entries.push(Utils.processRoll(baseRoll.reroll({async: false}), critThreshold, [20], bonusRoll));
+				entries.push(Utils.processRoll(await baseRoll.reroll({ async: true }), critThreshold, [20], bonusRoll));
 			}
 
 			// Mark ignored rolls if advantage/disadvantage
@@ -117,7 +117,7 @@ export class RollFields {
 				bonus: bonusRoll
 			};
 		} catch (err) {
-			ui.notifications.error(i18n("br5e.error.rollEvaluation", { msg: err.message}));
+			ui.notifications.error(i18n("br5e.error.rollEvaluation", { msg: err.message }));
 			throw err; // propagate the error
 		}
 	}
@@ -136,7 +136,7 @@ export class RollFields {
 	 * @param {RollState} options.rollState
 	 * @param {number} options.slotLevel
 	 */
-	static async constructAttackRoll(options={}) {
+	static async constructAttackRoll(options = {}) {
 		const { formula, item, rollState, slotLevel } = options;
 		const actor = options.actor ?? item?.actor;
 
@@ -165,7 +165,7 @@ export class RollFields {
 		// Get Roll. Use Formula if given, otherwise get it from the item
 		let roll = null;
 		if (formula) {
-			const rollData = Utils.getRollData({item, actor, abilityMod, slotLevel });
+			const rollData = Utils.getRollData({ item, actor, abilityMod, slotLevel });
 			roll = new Roll(formula, rollData);
 		} else if (item) {
 			roll = await ItemUtils.getAttackRoll(item);
@@ -174,7 +174,7 @@ export class RollFields {
 		}
 
 		// Construct the multiroll
-		return RollFields.constructMultiRoll({
+		return await RollFields.constructMultiRoll({
 			...options,
 			formula: roll,
 			rollState,
@@ -202,7 +202,7 @@ export class RollFields {
 	 * @param {BRSettings} options.settings Override config to use for the roll
 	 * @returns {import("./renderer.js").DamageDataProps}
 	 */
-	static constructDamageRoll(options={}) {
+	static async constructDamageRoll(options = {}) {
 		const { item, damageIndex, slotLevel, isCrit } = options;
 		const actor = options?.actor ?? item?.actor;
 		const isVersatile = damageIndex === "versatile";
@@ -270,14 +270,14 @@ export class RollFields {
 		// Assemble roll data and defer to the general damage construction
 		try {
 			const rollFormula = [formula, ...parts].join("+");
-			const baseRoll = new Roll(rollFormula, rollData).roll({async: false});
+			const baseRoll = await new Roll(rollFormula, rollData).roll({ async: true });
 			const total = baseRoll.total;
 
 			// Roll crit damage if relevant
 			let critRoll = null;
 			if (damageIndex !== "other") {
 				if (isCrit && critBehavior !== "0") {
-					critRoll = ItemUtils.getCritRoll(baseRoll.formula, total, { settings, extraCritDice });
+					critRoll = await ItemUtils.getCritRoll(baseRoll.formula, total, { settings, extraCritDice });
 				}
 			}
 
@@ -292,7 +292,7 @@ export class RollFields {
 				critRoll
 			};
 		} catch (err) {
-			ui.notifications.error(i18n("br5e.error.rollEvaluation", { msg: err.message}));
+			ui.notifications.error(i18n("br5e.error.rollEvaluation", { msg: err.message }));
 			throw err; // propagate the error
 		}
 	}
@@ -312,7 +312,7 @@ export class RollFields {
 	 * @param {BRSettings} options.settings Override config to use for the roll
 	 * @returns {import("./renderer.js").DamageDataProps}
 	 */
-	static constructCritDamageRoll(options={}) {
+	static async constructCritDamageRoll(options = {}) {
 		const { item, slotLevel } = options;
 		const actor = options?.actor ?? item?.actor;
 		const rollData = item ?
@@ -337,7 +337,7 @@ export class RollFields {
 
 		// Assemble roll data and defer to the general damage construction
 		try {
-			const critRoll = new Roll(formula, rollData).roll({async: false});
+			const critRoll = await new Roll(formula, rollData).roll({ async: true });
 
 			return {
 				type: "crit",
@@ -347,7 +347,7 @@ export class RollFields {
 				critRoll
 			};
 		} catch (err) {
-			ui.notifications.error(i18n("br5e.error.rollEvaluation", { msg: err.message}));
+			ui.notifications.error(i18n("br5e.error.rollEvaluation", { msg: err.message }));
 			throw err; // propagate the error
 		}
 	}
@@ -362,7 +362,7 @@ export class RollFields {
 	 * @param {BRSettings} options.settings Override settings to use for the roll
 	 * @returns {import("./renderer.js").DamageDataProps[]}
 	 */
-	static constructItemDamageRange(options={}) {
+	static constructItemDamageRange(options = {}) {
 		let index = options.index;
 		const { formula, item } = options;
 
@@ -395,7 +395,7 @@ export class RollFields {
 		}
 
 		return index.map(i => {
-			return RollFields.constructDamageRoll({...options, item, damageIndex: i});
+			return RollFields.constructDamageRoll({ ...options, item, damageIndex: i });
 		}).filter(d => d);
 	}
 
@@ -424,7 +424,7 @@ export class RollFields {
 	 * @param {object} settings BetterRoll settings overrides
 	 * @returns {Promise<Array<import("./renderer.js").RenderModelEntry>>}
 	 */
-	static async constructModelsFromField(field, metadata, settings={}) {
+	static async constructModelsFromField(field, metadata, settings = {}) {
 		let [fieldType, data] = field;
 		data = mergeObject(metadata, data ?? {}, { recursive: false });
 
@@ -439,7 +439,7 @@ export class RollFields {
 			case 'toolcheck':
 			case 'tool':
 			case 'check':
-				return [RollFields.constructMultiRoll({
+				return [await RollFields.constructMultiRoll({
 					...data,
 					formula: data.formula ?? (await ItemUtils.getToolRoll(data.item, data.bonus)).formula,
 				})];
@@ -474,12 +474,12 @@ export class RollFields {
 					...data,
 					item: data.ammo,
 					context: `${data.ammo.name}`
-				 })];
+				})];
 			case 'custom':
 				const { title, rolls, formula, rollState } = data;
 				const rollData = Utils.getRollData({ item, actor });
 				const resolvedFormula = new Roll(formula, rollData).formula;
-				return [RollFields.constructMultiRoll({
+				return [await RollFields.constructMultiRoll({
 					title, rollState,
 					formula: resolvedFormula || "1d20",
 					numRolls: rolls || 1,
@@ -507,7 +507,7 @@ export class RollFields {
 				}
 				break;
 			case 'crit':
-				return [RollFields.constructCritDamageRoll({ item, ...data })];
+				return [await RollFields.constructCritDamageRoll({ item, ...data })];
 		}
 
 		return [];
